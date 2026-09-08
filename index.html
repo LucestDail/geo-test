@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>대민 안내 챗봇 — 위치기반 답변 + 리즈닝 표출 데모</title>
+<style>
+  :root{ --bg:#f4f6f8; --card:#fff; --line:#e3e8ee; --ink:#1f2937; --sub:#6b7280;
+         --brand:#2f7d4f; --brand2:#e8f3ec; --think:#f0f4f8; --warn:#8a6d3b; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;
+       background:var(--bg);color:var(--ink);line-height:1.55}
+  .wrap{max-width:760px;margin:0 auto;padding:20px 16px 40px}
+  h1{font-size:19px;margin:0 0 2px}
+  .tag{display:inline-block;font-size:11px;color:#fff;background:var(--brand);border-radius:4px;padding:2px 7px;vertical-align:middle;margin-left:6px}
+  .desc{color:var(--sub);font-size:13px;margin:4px 0 16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+  .card h2{font-size:14px;margin:0 0 10px;color:var(--brand)}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  button{font-size:13px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 12px;cursor:pointer}
+  button.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
+  button:active{transform:translateY(1px)}
+  select{font-size:13px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  .loc{font-size:13px;margin-top:10px;padding:9px 11px;background:var(--brand2);border-radius:8px;display:none}
+  .loc b{color:var(--brand)}
+  .switchbar{display:flex;gap:14px;align-items:center;font-size:12px;color:var(--sub);margin-top:6px}
+  label.sw{display:flex;align-items:center;gap:5px;cursor:pointer}
+  /* chat */
+  .chat{min-height:120px}
+  .msg{margin:10px 0;display:flex}
+  .msg.user{justify-content:flex-end}
+  .bubble{max-width:82%;padding:10px 13px;border-radius:12px;font-size:14px;white-space:pre-wrap}
+  .user .bubble{background:var(--brand);color:#fff;border-bottom-right-radius:4px}
+  .bot .bubble{background:#eef1f4;border-bottom-left-radius:4px}
+  /* reasoning */
+  .think{background:var(--think);border:1px solid var(--line);border-radius:10px;margin:8px 0;font-size:12.5px;overflow:hidden}
+  .think summary{list-style:none;cursor:pointer;padding:9px 12px;color:var(--sub);display:flex;align-items:center;gap:8px;user-select:none}
+  .think summary::-webkit-details-marker{display:none}
+  .spin{width:12px;height:12px;border:2px solid #cbd5e1;border-top-color:var(--brand);border-radius:50%;animation:sp .7s linear infinite;flex:none}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .think .body{padding:0 12px 11px;color:#59606b;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;white-space:pre-wrap;max-height:150px;overflow:auto}
+  .chev{margin-left:auto;transition:transform .2s}
+  details[open] .chev{transform:rotate(90deg)}
+  .inputbar{display:flex;gap:8px;margin-top:12px}
+  .inputbar input{flex:1;font-size:14px;padding:10px 12px;border:1px solid var(--line);border-radius:9px}
+  .foot{font-size:11px;color:var(--sub);margin-top:8px;line-height:1.5}
+  .warn{color:var(--warn)}
+  .hintbtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .hintbtns button{font-size:12px;padding:6px 10px;background:#f8fafc}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>대민 안내 챗봇 <span class="tag">프로토타입 · 데모</span></h1>
+  <div class="desc">위치기반 답변(브라우저 Geolocation) + 리즈닝(생각 과정) 시각 표출 모의 테스트 · 2026.09.08 회의용</div>
+
+  <!-- 1. 위치 -->
+  <div class="card">
+    <h2>① 접속 사용자 위치</h2>
+    <div class="row">
+      <button class="primary" onclick="askGeo()">📍 내 위치로 안내받기 (브라우저 권한)</button>
+      <span style="font-size:12px;color:var(--sub)">권한 거부/미지원 시 아래에서 지역 선택</span>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <span style="font-size:13px;color:var(--sub)">지역 직접 선택(폴백):</span>
+      <select id="regionSel" onchange="setRegionManual()">
+        <option value="">— 선택 —</option>
+        <option>서울특별시</option><option>경기도</option><option>인천광역시</option>
+        <option>강원특별자치도</option><option>대전광역시</option><option>충청남도</option>
+        <option>전북특별자치도</option><option>전라남도</option><option>대구광역시</option>
+        <option>경상북도</option><option>부산광역시</option><option>경상남도</option><option>제주특별자치도</option>
+      </select>
+    </div>
+    <div class="loc" id="locBox"></div>
+    <div class="foot warn">⚠ 참고: IP 기반 조회는 ISP 할당지(예: 마이워크스페이스→구리)나 모바일=서울로 찍혀 신뢰도 낮음 → <b>브라우저 Geolocation을 기본</b>, 거부 시 <b>지역 선택</b>으로 폴백.</div>
+  </div>
+
+  <!-- 2. 채팅 -->
+  <div class="card">
+    <h2>② 채팅 — 리즈닝 표출 + 위치기반 답변</h2>
+    <div class="switchbar">
+      <label class="sw"><input type="checkbox" id="reasonOn" checked> 리즈닝(생각 과정) 표출</label>
+      <label class="sw"><input type="checkbox" id="rawOn" checked> 날것 그대로(영문 프롬프트 노출)</label>
+    </div>
+    <div class="chat" id="chat"></div>
+    <div class="hintbtns">
+      <button onclick="ask('가까운 자연휴양림 추천해줘')">가까운 자연휴양림 추천해줘</button>
+      <button onclick="ask('우리 지역 등산로 알려줘')">우리 지역 등산로 알려줘</button>
+      <button onclick="ask('이번 주말 숲 체험 프로그램 있어?')">주말 숲 체험 프로그램</button>
+    </div>
+    <div class="inputbar">
+      <input id="q" placeholder="질문 입력…" onkeydown="if(event.key==='Enter')ask(this.value)">
+      <button class="primary" onclick="ask(document.getElementById('q').value)">보내기</button>
+    </div>
+  </div>
+
+  <div class="foot">
+    🔒 <b>위치정보보호법 배려(설계 원칙)</b>: 개인위치정보 수집은 별도 동의 필요 · 좌표는 서버 로그에 저장하지 않고 <b>시/도 단위로 낮춰 요청 처리에만 사용 후 폐기</b> · 최종 법적 판단은 발주처/법무 확인.
+    <br>※ 실제 GPS 권한 팝업은 <b>HTTPS 또는 localhost</b>에서만 뜹니다. 파일로 바로 열면 자동으로 "지역 선택" 폴백으로 동작합니다(데모엔 지장 없음).
+  </div>
+</div>
+
+<script>
+// ── 아주 단순한 좌표→광역 시·도 근사(외부 API 없이 데모용, 최근접) ──
+const CENTROIDS=[
+  ["서울특별시",37.566,126.978],["경기도",37.41,127.52],["인천광역시",37.456,126.705],
+  ["강원특별자치도",37.86,128.31],["대전광역시",36.35,127.385],["충청남도",36.56,126.80],
+  ["전북특별자치도",35.72,127.14],["전라남도",34.86,126.99],["대구광역시",35.87,128.60],
+  ["경상북도",36.40,128.87],["부산광역시",35.18,129.075],["경상남도",35.26,128.20],["제주특별자치도",33.43,126.55]
+];
+let REGION=null;
+
+function fmt(t){return t.toFixed(4)}
+function showLoc(html){const b=document.getElementById('locBox');b.style.display='block';b.innerHTML=html}
+
+function askGeo(){
+  if(!navigator.geolocation){ return fallbackNotice('이 브라우저는 위치를 지원하지 않아요'); }
+  showLoc('위치 확인 중…');
+  navigator.geolocation.getCurrentPosition(
+    p=>{
+      const {latitude:la,longitude:lo,accuracy:ac}=p.coords;
+      REGION=nearest(la,lo);
+      showLoc(`좌표: <b>${fmt(la)}, ${fmt(lo)}</b> (±${Math.round(ac)}m) · 추정 지역: <b>${REGION}</b> <span style="color:var(--sub)">(브라우저 Geolocation)</span>`);
+    },
+    e=>{ fallbackNotice('위치 권한이 거부되었어요'); },
+    {enableHighAccuracy:true,timeout:8000}
+  );
+}
+function fallbackNotice(msg){
+  showLoc(`${msg} → 아래 <b>지역 선택</b>으로 진행해 주세요. <span style="color:var(--sub)">(대민 서비스 표준 폴백)</span>`);
+}
+function nearest(la,lo){
+  let best=CENTROIDS[0],bd=1e9;
+  for(const c of CENTROIDS){const d=(c[1]-la)**2+(c[2]-lo)**2; if(d<bd){bd=d;best=c;}}
+  return best[0];
+}
+function setRegionManual(){
+  const v=document.getElementById('regionSel').value;
+  if(!v)return; REGION=v;
+  showLoc(`선택 지역: <b>${REGION}</b> <span style="color:var(--sub)">(사용자 직접 선택)</span>`);
+}
+
+// ── 채팅 ──
+const chat=document.getElementById('chat');
+function bubble(role,text){const m=document.createElement('div');m.className='msg '+role;
+  m.innerHTML=`<div class="bubble"></div>`;m.querySelector('.bubble').textContent=text;chat.appendChild(m);
+  m.scrollIntoView({block:'end'});return m.querySelector('.bubble');}
+
+const STEPS=[
+  {label:'위치 확인 중…', raw:'Resolving user region from geolocation payload...'},
+  {label:'관련 규정·데이터 조회 중…', raw:'Searching public knowledge base: recreation, trails, safety_rules...'},
+  {label:'후보 정리·순위화 중…', raw:'Ranking candidates by distance & season availability, drafting answer...'}
+];
+
+function ask(q){
+  q=(q||'').trim(); if(!q)return;
+  document.getElementById('q').value='';
+  bubble('user',q);
+  const region = REGION || '(지역 미지정)';
+  const reasonOn=document.getElementById('reasonOn').checked;
+  const rawOn=document.getElementById('rawOn').checked;
+
+  if(!reasonOn){ // 리즈닝 끄면: 그냥 로딩만 (지루함 비교용)
+    const b=bubble('bot','⏳ 답변 생성 중…');
+    setTimeout(()=>{ b.textContent=answer(q,region); b.parentElement.scrollIntoView({block:'end'}); },2200);
+    return;
+  }
+
+  // 리즈닝 표출: 접이식 + 요약 라벨 + 스트리밍
+  const det=document.createElement('details'); det.className='think'; det.open=true;
+  det.innerHTML=`<summary><span class="spin"></span><span class="lb">생각하는 중…</span><span class="chev">▸</span></summary><div class="body"></div>`;
+  chat.appendChild(det);
+  const lb=det.querySelector('.lb'), body=det.querySelector('.body');
+  det.scrollIntoView({block:'end'});
+
+  let si=0;
+  (function step(){
+    if(si>=STEPS.length){
+      lb.textContent='생각 과정 (완료)';
+      det.querySelector('.spin').style.display='none';
+      det.open=false; // 완료되면 접힘 → 답변에 집중
+      const b=bubble('bot','');
+      stream(b, answer(q,region));
+      return;
+    }
+    const s=STEPS[si++];
+    lb.textContent=s.label;
+    const line = rawOn ? s.raw : s.label;
+    typeInto(body, line+'\n', ()=>setTimeout(step,350));
+  })();
+}
+
+function typeInto(el,text,done){ let i=0;
+  const t=setInterval(()=>{ el.textContent+=text[i++]||''; el.scrollTop=el.scrollHeight;
+    if(i>=text.length){clearInterval(t);done&&done();}},14);
+}
+function stream(el,text){ let i=0;
+  const t=setInterval(()=>{ el.textContent+=text[i++]||''; el.parentElement.scrollIntoView({block:'end'});
+    if(i>=text.length)clearInterval(t);},18);
+}
+
+function answer(q,region){
+  const r=region.replace(/(특별자치도|특별시|광역시|도)$/,'');
+  if(q.includes('휴양림'))
+    return `${region} 기준으로 가까운 자연휴양림을 안내해 드릴게요.\n\n1. ${r} 국립자연휴양림 — 숙박·산책로\n2. ${r} 치유의 숲 — 무장애 데크길\n3. ${r} 수목원 — 주말 해설 프로그램\n\n원하시면 예약 링크와 교통편도 알려드릴게요.`;
+  if(q.includes('등산로')||q.includes('트레킹'))
+    return `${region} 인근 추천 등산로예요.\n\n· 초급: ○○둘레길(2.5km, 1시간)\n· 중급: △△능선길(6km, 3시간)\n\n오늘 날씨·통제 구간도 확인해 안내드릴 수 있어요.`;
+  return `${region} 기준으로 안내해 드릴게요. "${q}" 관련 정보를 찾아 정리했습니다. 더 구체적인 지역(시·군·구)을 알려주시면 정확도가 올라가요.`;
+}
+
+// 시작 안내
+bubble('bot','안녕하세요! 대민 안내 챗봇이에요. 위쪽에서 위치를 잡거나 지역을 선택한 뒤 질문해 보세요. (예: 가까운 자연휴양림 추천해줘)');
+</script>
+</body>
+</html>
