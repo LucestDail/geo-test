@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>위치 확인 데모 — 좌표·지역 도출</title>
 <style>
-  :root{--bg:#f4f6f8;--card:#fff;--line:#e3e8ee;--ink:#1f2937;--sub:#6b7280;--brand:#2f7d4f;--brand2:#e8f3ec;--mono:#eef2f6}
+  :root{--bg:#f4f6f8;--card:#fff;--line:#e3e8ee;--ink:#1f2937;--sub:#6b7280;--brand:#2f7d4f;--brand2:#e8f3ec;--mono:#0f1720}
   *{box-sizing:border-box}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;background:var(--bg);color:var(--ink);line-height:1.6}
   .wrap{max-width:640px;margin:0 auto;padding:24px 16px 48px}
@@ -22,14 +22,12 @@
   .big{background:var(--brand2);border-radius:9px;padding:12px 14px;margin:12px 0;font-size:15px}
   .big b{color:var(--brand);font-size:17px}
   .status{font-size:13px;color:var(--sub);margin-top:12px;min-height:18px}
-  details{margin-top:10px}
-  summary{cursor:pointer;font-size:13px;color:var(--sub)}
-  pre{background:var(--mono);border-radius:8px;padding:12px;font-size:11.5px;overflow:auto;max-height:220px;margin:8px 0 0}
   h2{font-size:14px;color:var(--brand);margin:0 0 10px}
   .step{display:flex;gap:10px;margin:10px 0;font-size:13.5px}
   .num{flex:none;width:22px;height:22px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
-  .note{font-size:12px;color:var(--sub);margin-top:6px}
-  .warn{color:#8a6d3b}
+  .dbg h3{font-size:12px;color:var(--sub);margin:12px 0 4px;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+  pre{background:var(--mono);color:#d6e2ee;border-radius:8px;padding:12px;font-size:11.5px;line-height:1.5;overflow:auto;max-height:260px;margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  code{background:#eef2f6;border-radius:4px;padding:1px 5px;font-size:12px}
 </style>
 </head>
 <body>
@@ -47,16 +45,21 @@
       <div class="kv"><span class="k">정확도</span><span class="v" id="acc">—</span></div>
       <div class="kv"><span class="k">좌표 획득 방식(추정)</span><span class="v" id="method">—</span></div>
       <div class="kv"><span class="k">지역명 출처</span><span class="v" id="src">—</span></div>
-      <details><summary>역지오코딩 원본 응답(JSON) 보기</summary><pre id="raw"></pre></details>
     </div>
   </div>
 
   <div class="card">
-    <h2>동작 원리 — 어떻게 위치가 나오나</h2>
+    <h2>동작 원리</h2>
     <div class="step"><div class="num">1</div><div><b>좌표 획득</b> — 브라우저 <code>navigator.geolocation</code>이 위·경도를 계산. 모바일=GPS(수 m), 데스크톱=WiFi AP+네트워크 기반(수십~수백 m). ※HTTPS/localhost + 사용자 허용 필요.</div></div>
-    <div class="step"><div class="num">2</div><div><b>지역 도출(역지오코딩)</b> — 그 좌표를 역지오코딩 서비스에 넘기면 “이 좌표가 속한 행정구역”을 판정해 <b>시/도 + 시·군·구</b>로 돌려줌. (데모: BigDataCloud)</div></div>
-    <p class="note warn">⚠ IP 기반 조회는 ISP 할당지(예: 마이워크스페이스→구리)·모바일=서울로 틀려 신뢰도 낮음 → 브라우저 좌표 방식이 정확.</p>
-    <p class="note">🔒 실서비스 권고: 시민 좌표를 해외 API로 보내지 않도록 <b>국내 역지오코딩(VWorld·카카오·네이버)</b>으로 교체 + 좌표 미저장·시/도 단위로 낮춰 처리 후 폐기.</p>
+    <div class="step"><div class="num">2</div><div><b>지역 도출(역지오코딩)</b> — 그 좌표를 역지오코딩 서비스에 넘기면 “이 좌표가 속한 행정구역”을 판정해 <b>시/도 + 시·군·구</b>로 돌려줌.</div></div>
+  </div>
+
+  <div class="card dbg">
+    <h2>디버깅 — 원본 응답값</h2>
+    <h3>① navigator.geolocation → position</h3>
+    <pre id="geoRaw">(내 위치 확인 클릭 시 표시)</pre>
+    <h3>② BigDataCloud reverse-geocode → response</h3>
+    <pre id="apiRaw">(내 위치 확인 클릭 시 표시)</pre>
   </div>
 </div>
 
@@ -64,28 +67,43 @@
 function set(id,v){document.getElementById(id).textContent=v}
 function go(){
   const st=document.getElementById('status');
+  document.getElementById('geoRaw').textContent='…';
+  document.getElementById('apiRaw').textContent='…';
   if(!navigator.geolocation){ st.textContent='이 브라우저는 위치를 지원하지 않습니다.'; return; }
   st.textContent='위치 확인 중…';
   navigator.geolocation.getCurrentPosition(async p=>{
-    const {latitude:la,longitude:lo,accuracy:ac}=p.coords;
+    const c=p.coords;
+    const geoObj={
+      timestamp:p.timestamp,
+      timestamp_iso:new Date(p.timestamp).toISOString(),
+      coords:{
+        latitude:c.latitude, longitude:c.longitude, accuracy:c.accuracy,
+        altitude:c.altitude, altitudeAccuracy:c.altitudeAccuracy,
+        heading:c.heading, speed:c.speed
+      }
+    };
+    document.getElementById('geoRaw').textContent=JSON.stringify(geoObj,null,2);
+
     document.getElementById('result').style.display='block';
-    set('lat',la.toFixed(5)); set('lon',lo.toFixed(5)); set('acc','± '+Math.round(ac)+' m');
-    set('method', ac<=60 ? 'GPS 추정(고정밀)' : 'WiFi/네트워크 추정');
-    st.textContent='좌표 획득 완료. 지역 확인 중…';
+    set('lat',c.latitude.toFixed(6)); set('lon',c.longitude.toFixed(6)); set('acc','± '+Math.round(c.accuracy)+' m');
+    set('method', c.accuracy<=60 ? 'GPS 추정(고정밀)' : 'WiFi/네트워크 추정');
+    st.textContent='좌표 획득 완료. 역지오코딩 호출 중…';
+
+    const url=`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${c.latitude}&longitude=${c.longitude}&localityLanguage=ko`;
     try{
-      const r=await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${la}&longitude=${lo}&localityLanguage=ko`);
+      const r=await fetch(url);
       const j=await r.json();
+      document.getElementById('apiRaw').textContent=JSON.stringify(j,null,2);
       const region=[j.principalSubdivision,j.city||j.locality].filter(Boolean).join(' ')||'(판정 불가)';
       set('region',region); set('src','BigDataCloud 역지오코딩');
-      document.getElementById('raw').textContent=JSON.stringify(
-        {principalSubdivision:j.principalSubdivision,city:j.city,locality:j.locality,
-         localityInfo_admin:(j.localityInfo&&j.localityInfo.administrative||[]).map(a=>a.name)},null,2);
-      st.textContent='완료 — 위 좌표는 실제 브라우저 값, 지역명은 API 응답입니다(하드코딩 아님).';
+      st.textContent='완료 — 좌표는 실제 브라우저 값, 지역명은 API 응답(하드코딩 아님).';
     }catch(e){
-      set('region','(역지오코딩 실패 — 좌표는 정상)'); set('src','API 오류'); st.textContent='좌표는 확인됨. 지역 API 호출 실패.';
+      document.getElementById('apiRaw').textContent='fetch 실패: '+e;
+      set('region','(역지오코딩 실패)'); set('src','API 오류'); st.textContent='좌표는 확인됨. 지역 API 호출 실패.';
     }
   }, e=>{
     const m={1:'위치 권한 거부됨 (브라우저 🔒→위치 허용, macOS 위치서비스 확인)',2:'위치 확인 불가(OS 위치서비스 꺼짐)',3:'시간 초과'};
+    document.getElementById('geoRaw').textContent='error code '+e.code+': '+e.message;
     st.textContent=m[e.code]||'위치를 가져오지 못했습니다.';
   },{enableHighAccuracy:true,timeout:8000});
 }
