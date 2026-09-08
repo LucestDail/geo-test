@@ -117,10 +117,18 @@ function askGeo(){
   if(!navigator.geolocation){ return fallbackNotice('이 브라우저는 위치를 지원하지 않아요'); }
   showLoc('위치 확인 중…');
   navigator.geolocation.getCurrentPosition(
-    p=>{
+    async p=>{
       const {latitude:la,longitude:lo,accuracy:ac}=p.coords;
-      REGION=nearest(la,lo);
-      showLoc(`좌표: <b>${fmt(la)}, ${fmt(lo)}</b> (±${Math.round(ac)}m) · 추정 지역: <b>${REGION}</b> <span style="color:var(--sub)">(브라우저 Geolocation)</span>`);
+      showLoc(`좌표: <b>${fmt(la)}, ${fmt(lo)}</b> (±${Math.round(ac)}m) · 지역 확인 중…`);
+      let detail, src;
+      try{
+        const r=await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${la}&longitude=${lo}&localityLanguage=ko`);
+        const j=await r.json();
+        detail=[j.principalSubdivision, j.city||j.locality].filter(Boolean).join(' ') || nearest(la,lo);
+        src='역지오코딩';
+      }catch(e){ detail=nearest(la,lo); src='근사(폴백)'; }
+      REGION=detail;
+      showLoc(`좌표: <b>${fmt(la)}, ${fmt(lo)}</b> (±${Math.round(ac)}m) · 지역: <b>${detail}</b> <span style="color:var(--sub)">(브라우저 Geolocation + ${src})</span>`);
     },
     e=>{ fallbackNotice('위치 권한이 거부되었어요'); },
     {enableHighAccuracy:true,timeout:8000}
