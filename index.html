@@ -130,7 +130,12 @@ function askGeo(){
       REGION=detail;
       showLoc(`좌표: <b>${fmt(la)}, ${fmt(lo)}</b> (±${Math.round(ac)}m) · 지역: <b>${detail}</b> <span style="color:var(--sub)">(브라우저 Geolocation + ${src})</span>`);
     },
-    e=>{ fallbackNotice('위치 권한이 거부되었어요'); },
+    e=>{
+      const m={1:'위치 권한이 거부됨 (브라우저 주소창 🔒 → 위치 허용, 또는 macOS 위치서비스 확인)',
+               2:'위치를 확인할 수 없음 (OS 위치서비스 꺼짐/신호 없음)',
+               3:'위치 확인 시간 초과'};
+      fallbackNotice(m[e.code]||'위치를 가져오지 못했어요');
+    },
     {enableHighAccuracy:true,timeout:8000}
   );
 }
